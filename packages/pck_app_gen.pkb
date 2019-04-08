@@ -1,32 +1,73 @@
+/*
+@author:  Daniel Huha
+@created: 2018
+@desc:    APEX Application Generator
+@license: free to use and modify, just credit the @author 
+*/
 create or replace package body pck_app_gen as
   
   nl varchar2(1) := chr(10);
   tb varchar2(1) := chr(9);
 
-  PKG_BODY VARCHAR2(16) := 'BODY';
-  PKG_SPEC VARCHAR2(16) := 'SPEC';
-
-  C_PAD_LENGTH CONSTANT NUMBER := 30;
-
-  
-  T_CREATE      VARCHAR2(4000);
-  T_SHOW_SPEC   VARCHAR2(255);
-  T_HIDE_SPEC   VARCHAR2(255);
-  T_SHOW_BODY   VARCHAR2(255);
-  T_HIDE_BODY   VARCHAR2(255);
-  T_DOWN_SPEC   VARCHAR2(255);
-  T_DOWN_BODY   VARCHAR2(255);
-  T_SUBPROGRAM  VARCHAR2(255);
-  T_DESCRIPTION VARCHAR2(255);
-  T_DESC1       VARCHAR2(4000);
-  T_DESC2       VARCHAR2(4000);
-  T_DESC3       VARCHAR2(4000);
-  T_DESC4       VARCHAR2(4000);
-  T_COMMENT     VARCHAR2(4000);
-
-  c_edit_image constant varchar2(255) := '<img src="#IMAGE_PREFIX#app_ui/img/icons/apex-edit-pencil.png" class="apex-edit-pencil" alt="Edit">';
+  pkg_body      varchar2(16) := 'BODY';
+  pkg_spec      varchar2(16) := 'SPEC';
+  t_create      varchar2(4000);
+  t_show_spec   varchar2(255);
+  t_hide_spec   varchar2(255);
+  t_show_body   varchar2(255);
+  t_hide_body   varchar2(255);
+  t_down_spec   varchar2(255);
+  t_down_body   varchar2(255);
+  t_subprogram  varchar2(255);
+  t_description varchar2(255);
+  t_desc1       varchar2(4000);
+  t_desc2       varchar2(4000);
+  t_desc3       varchar2(4000);
+  t_desc4       varchar2(4000);
+  t_comment     varchar2(4000);
+  c_pad_length  constant number := 30;
+  c_edit_image     constant varchar2(255) := '<img src="#IMAGE_PREFIX#app_ui/img/icons/apex-edit-pencil.png" class="apex-edit-pencil" alt="Edit">';
   c_parsing_schema constant varchar2(30) := 'DEMO1';
+  
+  type table_list_type is table of varchar2(256) index by binary_integer;
+  type t_created_objects_rec is record (object_type varchar2(50), object_name varchar2(50));
+  type t_created_objects_tab is table of t_created_objects_rec index by pls_integer;
+  m_created_objects_tab t_created_objects_tab;
+  
+  m_debug boolean := true;
+  
+  ------------------------------------------------------------------------------------------------------------------------------
+  -- procedure wrapper for debugging
   --
+  procedure lg(i_message in varchar2) is
+  begin
+    if m_debug then
+      l(i_message);
+    end if;
+  end lg;
+  
+  ------------------------------------------------------------------------------------------------------------------------------
+  -- procedure wrapper for error logging
+  --
+  procedure lge(i_message in varchar2) is
+  begin
+    l(i_message);
+  end lge;
+  
+  ------------------------------------------------------------------------------------------------------------------------------
+  -- procedure adds created object to global mem. table
+  --
+  procedure add_created_object(i_object_type in varchar2, i_object_name in varchar2) is
+    v_idx pls_integer;
+  begin
+    v_idx := m_created_objects_tab.count;
+    m_created_objects_tab(v_idx).object_type := i_object_type;
+    m_created_objects_tab(v_idx).object_name := i_object_name;
+  end add_created_object;
+  
+  ------------------------------------------------------------------------------------------------------------------------------
+  -- function returns Primary Key column for given table
+  -- 
   function get_pk_column(i_table_name in varchar2) return varchar2 is
     v_ret varchar2(200);
   begin
@@ -37,7 +78,7 @@ create or replace package body pck_app_gen as
             ,all_tab_comments c
             ,user_cons_columns cc
             ,all_constraints con
-       where t.table_name = i_table_name
+       where t.table_name = upper(i_table_name)
          and c.table_name = t.table_name
          and cc.table_name = c.table_name
          and con.constraint_name = cc.constraint_name
@@ -51,12 +92,25 @@ create or replace package body pck_app_gen as
     return v_ret;
   end get_pk_column;
   
+  ------------------------------------------------------------------------------------------------------------------------------
+  -- procedure removes application from APEX Builder
+  --
+  procedure remove_application(i_app_id in number) is
+  begin
+    for rec in (select application_id, workspace from apex_applications where application_id = i_app_id and workspace != 'INTERNAL')
+    loop
+      apex_util.set_workspace(p_workspace => rec.workspace);
+      apex_180200.wwv_flow_api.remove_application (p_application_id => rec.application_id);
+    end loop;
+  end remove_application;
+  
+  ------------------------------------------------------------------------------------------------------------------------------
+  -- procedure drops tables from comma delimited input list
   --
   procedure drop_tables(i_tables in varchar2) is
     v_tab_arr apex_application_global.vc_arr2;
   begin
     v_tab_arr := apex_util.string_to_table(i_tables, ':');
-    
     if v_tab_arr.count > 0 then
       for i in 1..v_tab_arr.count
       loop
@@ -64,15 +118,17 @@ create or replace package body pck_app_gen as
           execute immediate 'drop table '||v_tab_arr(i);
         exception
           when others then
-            l('Error while dropping table '||v_tab_arr(i)||': '||sqlerrm);
+            lg('Error while dropping table '||v_tab_arr(i)||': '||sqlerrm);
         end;
       end loop;
     end if;
   exception
     when others then
-      l('drop_tables('||i_tables||'):'||sqlerrm);
-  end;
+      lge('drop_tables('||i_tables||'):'||sqlerrm);
+  end drop_tables;
   
+  ------------------------------------------------------------------------------------------------------------------------------
+  -- procedure runs DDL and returns delimited list of created tables
   --
   procedure run_sql(i_sql in varchar2, o_tables out varchar2) is
     v_arr  apex_application_global.vc_arr2;
@@ -99,12 +155,12 @@ create or replace package body pck_app_gen as
     o_tables := upper(trim(both ':' from v_tabs));
   exception
     when others then
-      --raise_application_error(-20000, 'Error while executing v_tabs='||v_tabs);
-      raise_application_error(-20000, 'Error while executing v_sql='||v_sql||'; '||sqlerrm||', '||DBMS_UTILITY.FORMAT_ERROR_BACKTRACE);
+      lge('Error while executing v_sql='||v_sql||'; '||sqlerrm||', '||DBMS_UTILITY.FORMAT_ERROR_BACKTRACE);
+      raise_application_error(-20000, 'Error while executing code: '||sqlerrm);
   end run_sql;
   
-  ------------------------------------------------------------------------------
-  -- write_clob_to_file
+  ------------------------------------------------------------------------------------------------------------------------------
+  -- procedure writes input clob to directory
   --
   procedure write_clob_to_file(
     i_clob      in clob
@@ -141,9 +197,15 @@ create or replace package body pck_app_gen as
       raise;
   end write_clob_to_file;
 
+  ------------------------------------------------------------------------------------------------------------------------------
+  -- function returns API code, taken from WWV_FLOW_WIZARD_API
   --
-  FUNCTION GENERATE_CODE(P_APP_NAME VARCHAR2, P_TABLE_LIST TABLE_LIST_TYPE, P_OWNER VARCHAR2, P_TYPE VARCHAR2) RETURN SYS.DBMS_SQL.VARCHAR2A IS
-
+  FUNCTION GENERATE_CODE(
+    P_APP_NAME VARCHAR2
+  , P_TABLE_LIST TABLE_LIST_TYPE
+  , P_OWNER VARCHAR2
+  , P_TYPE VARCHAR2
+  ) RETURN SYS.DBMS_SQL.VARCHAR2A IS
     C SYS.DBMS_SQL.VARCHAR2A;
     L_APP_NAME VARCHAR2(255);
     L_ARG_NAME VARCHAR2(255);
@@ -151,11 +213,8 @@ create or replace package body pck_app_gen as
     L_DEFAULT  VARCHAR2(255);
     L_PK_COND  VARCHAR2(255);
     L_PK_LIST  VARCHAR2(255);
-
     L_PAD NUMBER;
-
   BEGIN
-
     L_APP_NAME := SUBSTR(P_APP_NAME,1,30);
     IF NVL(WWV_FLOW.G_TRANSLATED_FLOW_ID,WWV_FLOW.G_FLOW_ID) = WWV_FLOW.G_FLOW_ID THEN
         T_COMMENT := '-- table API for application '||L_APP_NAME||', generated '||TO_CHAR(SYSDATE, 'DD-MON-YYYY');
@@ -628,6 +687,8 @@ create or replace package body pck_app_gen as
 
   END GENERATE_CODE;
   
+  ------------------------------------------------------------------------------------------------------------------------------
+  -- procedure creates API package with procedures for given table list
   --
   procedure create_table_api(
     i_app_gen_app_id in number
@@ -656,6 +717,8 @@ create or replace package body pck_app_gen as
        set api_source = v_pck_clob||nl||nl
      where app_gen_app_id = i_app_gen_app_id;
     
+    execute immediate v_pck_clob;
+    
     write_clob_to_file(
       v_pck_clob
     , v_file_name
@@ -665,7 +728,8 @@ create or replace package body pck_app_gen as
     v_file_name := i_pck_name||'.pkb';
     
     v_pck.DELETE;
-        
+    v_pck_clob := null;
+    
     v_pck := generate_code(p_app_name   => i_pck_name
                           ,p_table_list => i_table_list
                           ,p_owner      => upper(i_owner)
@@ -681,17 +745,23 @@ create or replace package body pck_app_gen as
        set api_source = api_source||v_pck_clob||nl
      where app_gen_app_id = i_app_gen_app_id;
     
+    execute immediate v_pck_clob;
+
     write_clob_to_file(
       v_pck_clob
     , v_file_name
     , 'APEX_EXPORT'
     );
+    
+    add_created_object('PACKAGE', i_pck_name);
 
   exception
     when others then
       raise_application_error(-20000, 'Create API Error: '||sqlerrm||', '||DBMS_UTILITY.FORMAT_ERROR_BACKTRACE );
   end create_table_api;
   
+  ------------------------------------------------------------------------------------------------------------------------------
+  -- procedure generates API view for given table, which references generated API package
   --
   procedure generate_api_view(
     i_app_gen_app_id in  varchar2
@@ -706,7 +776,9 @@ create or replace package body pck_app_gen as
     v_columns       varchar2(4000);
     v_proc_params   varchar2(4000);
     v_vw_clob       clob;
-    v_template      varchar2(4000);
+    v_trg_clob      clob;
+    v_vw_template   varchar2(4000);
+    v_trg_template  varchar2(4000);
     
     procedure replace_tokens(
       io_template    in out varchar2
@@ -736,14 +808,32 @@ create or replace package body pck_app_gen as
     end loop;
     
     v_proc_params := rtrim(v_proc_params, ', '||nl);
-    
-    v_template :=
+
+    v_vw_template :=
       'create or replace view #VIEW_NAME#'||nl||
       'as'||nl||
       'select #COLUMNS#'||nl||
-      '  from #TABLE#;'||nl||
+      '  from #TABLE#';
+      
+    v_vw_clob := v_vw_template;
+    replace_tokens(v_vw_clob, '#VIEW_NAME#', v_view_name);
+    replace_tokens(v_vw_clob, '#COLUMNS#', v_columns);
+    replace_tokens(v_vw_clob, '#TABLE#', v_table);
+    begin
+    execute immediate rtrim(v_vw_clob);
+    add_created_object('VIEW', v_view_name);
+    exception
+    when others then
+    l(v_vw_clob);
+    l('error while executing: '||sqlerrm);
+    raise;
+    end;
+    v_vw_clob := v_vw_clob||';'||nl||
       nl||
-      nl||
+      nl;
+    
+    --
+    v_trg_template :=
       'create or replace trigger #TRIGGER_NAME#'||nl||
       'instead of insert or update or delete on #VIEW_NAME#'||nl||
       'for each row'||nl||
@@ -762,23 +852,32 @@ create or replace package body pck_app_gen as
       '    raise_application_error(-20900, ''Unsupported operation in #TRIGGER_NAME#'');'||nl||
       '  end if;'||nl||
       'end #TRIGGER_NAME#;'||nl||nl;
-    -- !!!
-    v_vw_clob := v_template;
-    replace_tokens(v_vw_clob, '#VIEW_NAME#', v_view_name);
-    replace_tokens(v_vw_clob, '#COLUMNS#', v_columns);
-    replace_tokens(v_vw_clob, '#TABLE#', v_table);
-    replace_tokens(v_vw_clob, '#TRIGGER_NAME#', 'trg_'||substr(v_view_name, 1, 22)||'_iud');
-    replace_tokens(v_vw_clob, '#PCK_NAME#', i_package_name);
-    replace_tokens(v_vw_clob, '#PROC_PARAMS#', v_proc_params);
-    replace_tokens(v_vw_clob, '#PK_PARAM#', 'p_'||lower(get_pk_column(i_table)));
-    replace_tokens(v_vw_clob, '#PK_COLUMN#', lower(get_pk_column(i_table)));
-    
+    --
+    v_trg_clob := v_trg_template;
+    replace_tokens(v_trg_clob, '#VIEW_NAME#', v_view_name);
+    replace_tokens(v_trg_clob, '#COLUMNS#', v_columns);
+    replace_tokens(v_trg_clob, '#TABLE#', v_table);
+    replace_tokens(v_trg_clob, '#TRIGGER_NAME#', 'trg_'||substr(v_view_name, 1, 22)||'_iud');
+    replace_tokens(v_trg_clob, '#PCK_NAME#', i_package_name);
+    replace_tokens(v_trg_clob, '#PROC_PARAMS#', v_proc_params);
+    replace_tokens(v_trg_clob, '#PK_PARAM#', 'p_'||lower(get_pk_column(i_table)));
+    replace_tokens(v_trg_clob, '#PK_COLUMN#', lower(get_pk_column(i_table)));
+    l('2 v_trg_clob='||v_trg_clob);
+    begin
+    execute immediate v_trg_clob;
+    add_created_object('TRIGGER', v_view_name);
+    exception
+    when others then
+    l(v_trg_clob);
+    l('error while executing: '||sqlerrm);
+    raise;
+    end;
     update app_gen_apps
-       set views_source = views_source||'--'||v_view_name||nl||v_vw_clob||nl
+       set views_source = views_source||'--'||v_view_name||nl||v_vw_clob||v_trg_clob||nl
      where app_gen_app_id = i_app_gen_app_id;
     
     write_clob_to_file(
-      v_vw_clob
+      v_vw_clob||v_trg_clob
      ,v_view_name||'.vw'
      ,'APEX_EXPORT'
     );
@@ -786,184 +885,31 @@ create or replace package body pck_app_gen as
     o_view_name := v_view_name||'.vw';
   end generate_api_view;
   
-  --
-  procedure create_app(
-    i_sql            in varchar2
-   ,i_app_id         in number
-   ,i_app_name       in varchar2
-   ,i_parsing_schema in varchar2
-   ,i_app_lang       in varchar2
-  ) is
-    v_tables     varchar2(4000);
-    v_tables_arr apex_application_global.vc_arr2;
-    v_rep_page   pls_integer := 2;
-    v_form_page  pls_integer := 3;
-    v_table_list table_list_type;
-    v_app_gen_app_id number;
-    l_theme      apex_180200.wwv_flow_create_app_v3.t_theme;
-  begin
-    -- 1) run DDL
-    -- 2) create PK triggers if needed
-    -- 3) generate API
-    -- 4) generate views
-    -- 5) generate app
-    -- 6) store app_gen definition
-    
-    run_sql(i_sql, v_tables);
-    l('v_tables='||v_tables);
-    
-    apex_180200.wwv_flow_define_app_v3.init_wizard;
-
-    l_theme.theme_type  := 'UT';
-    l_theme.id          := null; --:P1_THEME_ID;
-    l_theme.theme_style := 'Vita'; --:P1_THEME_STYLE;
-    
-    l('wwv_flow_create_app_v3.create_app');
-    apex_180200.wwv_flow_create_app_v3.create_app (
-        p_app_id                   => i_app_id,
-        p_app_name                 => i_app_name,
-        p_parsing_schema           => nvl(i_parsing_schema, c_parsing_schema),
-        p_app_language             => i_app_lang,
-        p_theme                    => l_theme,
-        p_authentication_name      => apex_180200.wwv_flow_authentication_api.c_type_apex_accounts,
-        p_base_table_prefix        => null, --':P5_BASE_TABLE_PREFIX',
-        p_features                 => null, --:P1_FEATURES,
-        p_translated_langs         => null, --:P1_TRANSLATED_LANGS,
-        -- appearance
-        p_nav_position             => 'SIDE', -- nvl(:P170_NAV_POSITION, :P1_NAV_POSITION),
-        p_app_icon_class           => 'app-icon-bar-line-chart', -- nvl(:P170_APP_ICON_CLASS, :P1_APP_ICON_CLASS),
-        p_app_color_class          => 'app-color-3', -- nvl(:P170_APP_COLOR_CLASS, :P1_APP_COLOR_CLASS),
-        p_app_icon_color_hex       => '#81BB5F', -- nvl(:P170_APP_COLOR_HEX, :P1_APP_COLOR_HEX),
-        -- advanced general
-        p_learn_app_def            => false, --( nvl(:P5_LEARN_UI_DEF_YN, 'N') = 'Y' ),
-        p_learn_existing_apps      => false, --( nvl(:P5_LEARN_YN,'N') = 'Y' ),
-        p_seed_from_app_id         => null, --:P5_SEED_FROM_APP,
-        p_short_description        => i_app_name,-- :P5_APP_SHORT_DESC,
-        p_long_description         => null, --:P5_APP_DESC,
-        p_app_version              => '1', --:P5_APP_VERSION,
-        p_app_logging              => true,
-        p_app_debugging            => true,
-        -- advanced security
-        p_deep_linking             => true,
-        p_max_session_length_sec   => null, --:P5_MAX_SESSION_LENGTH,
-        p_max_session_idle_sec     => null, --:P5_MAX_SESSION_IDLE_TIME,
-        -- advanced globalization
-        p_document_direction       => 'N',
-        p_date_format              => 'dd.mm.rrrr',
-        p_date_time_format         => 'dd.mm.rrrr hh24:mi',
-        p_timestamp_format         => null, --:P5_TIMESTAMP_FORMAT,
-        p_timestamp_tz_format      => null --:P5_TIMESTAMP_TZ_FORMAT
-        );
-    
-    l('htmldb_util.clear_app_cache');
-    htmldb_util.clear_app_cache(p_app_id => i_app_id);
-    
-    /* TODO Welcome regija
-    wwv_flow_api.create_page_plug(
-       p_id=>null --wwv_flow_api.id(3397922051923904)
-      ,p_flow_id=>i_app_id
-      ,p_page_id=>1
-      ,p_plug_name=>'Introduction'
-      ,p_region_template_options=>'#DEFAULT#:t-Region--scrollBody'
-      ,p_plug_template=>wwv_flow_api.id(4969239279318150)
-      ,p_plug_display_sequence=>20
-      ,p_include_in_reg_disp_sel_yn=>'Y'
-      ,p_plug_display_point=>'REGION_POSITION_01'
-      ,p_plug_source=>'Welcome to the AppGen '||i_app_name||'!'
-      ,p_plug_query_options=>'DERIVED_REPORT_COLUMNS'
-      ,p_attribute_01=>'N'
-      ,p_attribute_02=>'HTML'
-    );
-    */
-    -- TODO Create API Package
-    v_app_gen_app_id := app_gen_apps_seq.nextval;
-    
-    l('insert into app_gen_apps');
-    insert into app_gen_apps
-    values (v_app_gen_app_id, i_app_id, i_sql, v_tables, null, null, null, sysdate, nvl(v('APP_USER'), user));
-
-    v_tables_arr := apex_util.string_to_table(v_tables, ':');
-    /*
-    l('create_table_api');
-    if v_tables_arr.count > 0 then
-      for i in 1..v_tables_arr.count loop
-        if length(v_tables_arr(i)) > 0 then
-          v_table_list(i) := v_tables_arr(i);
-        end if;
-      end loop;
-    
-      create_table_api(
-        i_app_gen_app_id => v_app_gen_app_id
-       ,i_owner          => c_parsing_schema
-       ,i_pck_name       => 'pck_f'||i_app_id||'_api'
-       ,i_table_list     => v_table_list
-      );
-    end if;
-    */
-    if v_tables_arr.count > 0 then
-      for i in 1..v_tables_arr.count loop
-        if length(v_tables_arr(i)) > 0 then
-          l('create page for '||v_tables_arr(i));
-          -- TODO Create API View
-          create_report_with_form_pages(i_app_id, v_tables_arr(i), v_rep_page, v_form_page);
-          v_rep_page  := v_form_page + 1;
-          v_form_page := v_rep_page + 1;
-          v_table_list(i) := v_tables_arr(i);
-        end if;
-      end loop;
-    end if;
-    
-    if i_table_list.count > 0 then
-      for i in 1..i_table_list.count loop
-          l('create API View for '||i_table_list(i));
-          -- TODO Create API View
-          l('create page for '||i_table_list(i));
-          create_report_with_form_pages(i_app_id, i_table_list(i), v_rep_page, v_form_page);
-          v_rep_page  := v_form_page + 1;
-          v_form_page := v_rep_page + 1;
-      end loop;
-    end if;
-        
-    l('create_deployment');
-    create_deployment(
-      i_app_gen_app_id => v_app_gen_app_id
-     ,i_owner          => c_parsing_schema
-     ,i_pck_name       => substr(lower(replace(i_app_name, ' ', '_')), 1, 26)||'_api'
-     ,i_table_list     => v_table_list
-     ,i_workspace      => 'LOCAL'
-     ,i_app_id         => i_app_id
-    );
-  
-  exception
-    when others then
-      l('create_app: '||sqlerrm||' '||sys.dbms_utility.format_error_backtrace);
-      if v_tables is not null then
-        drop_tables(v_tables);
-      end if;
-      raise_application_error(-20000, 'Error: '||sqlerrm||' '||sys.dbms_utility.format_error_backtrace);
-  end create_app;
-  
+  ------------------------------------------------------------------------------------------------------------------------------
+  -- procedure creates report+form pages for given table/view
   --
   procedure create_report_with_form_pages(
     i_app_id       in number
-   ,i_table_name   in varchar2
+   ,i_view_name    in varchar2
    ,i_rep_page_id  in number
    ,i_form_page_id in number
   ) is 
-    l_edit_link       varchar2(1000) := c_edit_image;
-    l_pk1_source      varchar2(32767);
-    l_pk2_source      varchar2(32767);
-    l_rv_column       wwv_flow_global.t_dbms_id;
-    l_rpt_page_name   varchar2(255);
-    l_form_page_name  varchar2(255);
-    
+    l_edit_link           varchar2(1000) := c_edit_image;
+    l_pk1_source          varchar2(32767);
+    l_pk2_source          varchar2(32767);
+    l_rv_column           wwv_flow_global.t_dbms_id;
+    l_rpt_page_name       varchar2(255);
+    l_form_page_name      varchar2(255);
     l_id                  number;
     l_region_template     number;
     l_breadcrumb_entry_id number;
+    l_nav_list_id         number;
+    l_user_interface_id   number;
     
-    l_nav_list_id number;
-    l_user_interface_id number;
-    v_columns varchar2(4000);
+    v_columns    varchar2(4000);
+    v_table_name varchar2(50);
+    v_view_name  varchar2(50);
+    v_pk_column  varchar2(50);
   begin
     /*
     if :P4776_PK1_SOURCE_TYPE = 'S' then
@@ -987,11 +933,16 @@ create or replace package body pck_app_gen as
     --l_rpt_page_name  := 'Report on '||upper(i_table_name);
     --l_form_page_name := 'Form on '||upper(i_table_name);
     
-    l_rpt_page_name  := initcap(replace(i_table_name, '_', ' '));
+    lg('i_view_name='||i_view_name);
+    v_view_name  := upper(replace(i_view_name, '.vw', ''));
+    v_table_name := upper(replace(v_view_name, 'AV_', ''));
+    lg('v_view_name='||v_view_name);
+    lg('v_table_name='||v_table_name);
+    l_rpt_page_name  := initcap(replace(v_table_name, '_', ' '));
     l_form_page_name := l_rpt_page_name|| ' - Add/Edit';
     
-    l('l_rpt_page_name='||l_rpt_page_name);
-    l('l_form_page_name='||l_form_page_name);
+    lg('l_rpt_page_name='||l_rpt_page_name);
+    lg('l_form_page_name='||l_form_page_name);
     
     select list_id
       into l_nav_list_id
@@ -1004,37 +955,36 @@ create or replace package body pck_app_gen as
     select id /* get the first displayed user interface */
       into l_user_interface_id
       from apex_180200.wwv_flow_user_interfaces
-     where flow_id           = i_app_id
-       --and security_group_id = :WORKSPACE_ID
+     where flow_id = i_app_id
        and rownum = 1 
      order by display_seq;
     
     l('l_user_interface_id='||l_user_interface_id);
     
-     select listagg(column_name, ':') within group (order by column_id)
-       into v_columns
-       from all_tab_columns c
-      where table_name = i_table_name;
+    select listagg(column_name, ':') within group (order by column_id)
+      into v_columns
+      from all_tab_columns c
+     where upper(table_name) = upper(v_table_name);
+    
+    v_pk_column := get_pk_column(v_table_name);
     
     l('v_columns='||v_columns);
-    
-    l('get_pk_column='||get_pk_column(i_table_name));
     l('i_app_id='||i_app_id);
     l('i_form_page_id='||i_form_page_id);
     l('i_rep_page_id='||i_rep_page_id);
     l('l_form_page_name='||l_form_page_name);
     l('l_rpt_page_name='||l_rpt_page_name);
     l('l_user_interface_id='||l_user_interface_id);
-    l('p_table_pk_column_name='||get_pk_column(i_table_name));
+    l('p_table_pk_column_name='||v_pk_column);
     l('l_rv_column='||l_rv_column);
     l('v_columns='||v_columns);
+    l('display_columns='||replace(v_columns, v_pk_column||':', ''));
     l('p_form_region_template='||apex_180200.wwv_flow_theme_dev.get_region_template_id (
                                       p_application_id => i_app_id,
                                       p_theme_id       => 42,
                                       p_page_type      => 'FORM' ));
     l('l_form_page_name='||l_form_page_name);
     l('l_edit_link='||l_edit_link);
-    
     
     apex_180200.wwv_flow_wizard_api.create_query_and_update_page (
       p_flow_id                  => i_app_id,
@@ -1059,9 +1009,9 @@ create or replace package body pck_app_gen as
       p_report_type              => 'INTERACTIVE',    
       --   
       p_table_owner              => c_parsing_schema,
-      p_table_name               => i_table_name,
+      p_table_name               => v_view_name,
       --
-      p_table_pk_column_name     => get_pk_column(i_table_name),
+      p_table_pk_column_name     => v_pk_column,
       p_table_pk_src_type        => 'T', -- Existing Trigger
       --p_table_pk_src             => null, --l_pk1_source,
       --p_table_pk2_column_name    => null, --replace(replace(:p4703_pk2,'%'||'null%',null),'0',null),
@@ -1070,7 +1020,7 @@ create or replace package body pck_app_gen as
       p_table_rv_column_name     => l_rv_column,
       --
       p_display_column_list      => v_columns,        
-      p_report_select_list       => v_columns,
+      p_report_select_list       => replace(v_columns, v_pk_column||':', ''),
       --p_rpt_template             => null,
       --p_rpt_region_template      => apex_180200.wwv_flow_theme_dev.get_region_template_id (
       --                      p_application_id => i_app_id,
@@ -1097,7 +1047,7 @@ create or replace package body pck_app_gen as
     when others then
       raise_application_error(-20000, 'Error: '||sqlerrm||', '||DBMS_UTILITY.FORMAT_ERROR_BACKTRACE );
   end create_report_with_form_pages;
-
+ 
   --
   procedure generate_deployment_scripts(i_dep_objects_tab in table_list_type) is
     v_dep_sql clob;
@@ -1220,7 +1170,265 @@ create or replace package body pck_app_gen as
     l('generate_deployment_scripts');
     generate_deployment_scripts(v_dep_objects_tab);
     
-  end create_deployment;
+  end create_deployment; 
+  
+  ------------------------------------------------------------------------------------------------------------------------------
+  -- function returns region template id
+  --
+  function get_standard_region_template_id(i_app_id in number) return number is
+    v_region_template_id apex_application_temp_region.region_template_id%type;
+  begin
+    select region_template_id
+      into v_region_template_id
+      from apex_application_temp_region
+     where application_id = i_app_id
+       and internal_name = 'STANDARD';
+       
+    return v_region_template_id;
+  end get_standard_region_template_id;
+  
+  ------------------------------------------------------------------------------------------------------------------------------
+  -- main App Gen procedure
+  --
+  procedure create_app(
+    i_sql            in varchar2
+   ,i_app_id         in number
+   ,i_app_name       in varchar2
+   ,i_parsing_schema in varchar2
+   ,i_app_lang       in varchar2
+   ,i_tables         in varchar2 default null
+  ) is
+    v_tables         varchar2(4000);
+    v_tables_arr     apex_application_global.vc_arr2;
+    v_rep_page       pls_integer := 2;
+    v_form_page      pls_integer := 3;
+    v_table_list     table_list_type;
+    v_app_gen_app_id number;
+    l_theme          apex_180200.wwv_flow_create_app_v3.t_theme;
+    v_view_name      varchar2(50);
+  begin
+    -- 1) run DDL if needed
+    -- 2) create PK triggers if needed
+    -- 3) generate API
+    -- 4) generate views
+    -- 5) generate app
+    -- 6) store app_gen definition
+    
+    if i_tables is not null then
+      v_tables := i_tables;
+    else
+      run_sql(i_sql, v_tables);
+    end if;
+    lg('v_tables='||v_tables);
+    
+    v_app_gen_app_id := app_gen_apps_seq.nextval;
+    
+    apex_180200.wwv_flow_define_app_v3.init_wizard;
+
+    l_theme.theme_type  := 'UT';
+    l_theme.id          := null; --:P1_THEME_ID;
+    l_theme.theme_style := 'Vita'; --:P1_THEME_STYLE;
+    
+    lg('wwv_flow_create_app_v3.create_app');
+    apex_180200.wwv_flow_create_app_v3.create_app (
+        p_app_id                   => i_app_id,
+        p_app_name                 => i_app_name,
+        p_parsing_schema           => nvl(i_parsing_schema, c_parsing_schema),
+        p_app_language             => i_app_lang,
+        p_theme                    => l_theme,
+        p_authentication_name      => apex_180200.wwv_flow_authentication_api.c_type_apex_accounts,
+        p_base_table_prefix        => null, --':P5_BASE_TABLE_PREFIX',
+        p_features                 => null, --:P1_FEATURES,
+        p_translated_langs         => null, --:P1_TRANSLATED_LANGS,
+        -- appearance
+        p_nav_position             => 'SIDE', -- nvl(:P170_NAV_POSITION, :P1_NAV_POSITION),
+        p_app_icon_class           => 'app-icon-bar-line-chart', -- nvl(:P170_APP_ICON_CLASS, :P1_APP_ICON_CLASS),
+        p_app_color_class          => 'app-color-3', -- nvl(:P170_APP_COLOR_CLASS, :P1_APP_COLOR_CLASS),
+        p_app_icon_color_hex       => '#81BB5F', -- nvl(:P170_APP_COLOR_HEX, :P1_APP_COLOR_HEX),
+        -- advanced general
+        p_learn_app_def            => false, --( nvl(:P5_LEARN_UI_DEF_YN, 'N') = 'Y' ),
+        p_learn_existing_apps      => false, --( nvl(:P5_LEARN_YN,'N') = 'Y' ),
+        p_seed_from_app_id         => null, --:P5_SEED_FROM_APP,
+        p_short_description        => i_app_name,-- :P5_APP_SHORT_DESC,
+        p_long_description         => null, --:P5_APP_DESC,
+        p_app_version              => '1', --:P5_APP_VERSION,
+        p_app_logging              => true,
+        p_app_debugging            => true,
+        -- advanced security
+        p_deep_linking             => true,
+        p_max_session_length_sec   => null, --:P5_MAX_SESSION_LENGTH,
+        p_max_session_idle_sec     => null, --:P5_MAX_SESSION_IDLE_TIME,
+        -- advanced globalization
+        p_document_direction       => 'N',
+        p_date_format              => 'dd.mm.rrrr',
+        p_date_time_format         => 'dd.mm.rrrr hh24:mi',
+        p_timestamp_format         => null, --:P5_TIMESTAMP_FORMAT,
+        p_timestamp_tz_format      => null --:P5_TIMESTAMP_TZ_FORMAT
+        );
+        
+    apex_180200.wwv_flow_api.create_page_plug(
+       p_id=>null --wwv_flow_api.id(3397922051923904)
+      ,p_flow_id=>i_app_id
+      ,p_page_id=>1
+      ,p_plug_name=>'Introduction'
+      ,p_region_template_options=>'#DEFAULT#:t-Region--scrollBody'
+      ,p_plug_template=>get_standard_region_template_id(i_app_id)
+      ,p_plug_display_sequence=>20
+      ,p_include_in_reg_disp_sel_yn=>'Y'
+      ,p_plug_display_point=>'BODY'
+      ,p_plug_source=>'Welcome to the App Gen '||i_app_name||'!'
+      ,p_plug_query_options=>'DERIVED_REPORT_COLUMNS'
+      ,p_attribute_01=>'N'
+      ,p_attribute_02=>'HTML'
+    );
+    
+    lg('htmldb_util.clear_app_cache');
+    htmldb_util.clear_app_cache(p_app_id => i_app_id);
+    
+    lg('insert into app_gen_apps');
+    insert into app_gen_apps
+    values (v_app_gen_app_id, i_app_id, i_sql, v_tables, null, null, null, sysdate, nvl(v('APP_USER'), user));
+
+    v_tables_arr := apex_util.string_to_table(v_tables, ':');
+    
+    add_created_object('APP', i_app_id);
+    
+    if v_tables_arr.count > 0 then
+      for i in 1..v_tables_arr.count loop
+        if length(v_tables_arr(i)) > 0 then
+          v_table_list(i) := v_tables_arr(i);
+        end if;
+      end loop;
+      
+      lg('create_table_api');
+      create_table_api(
+        i_app_gen_app_id => v_app_gen_app_id
+       ,i_owner          => c_parsing_schema
+       ,i_pck_name       => 'pck_f'||i_app_id||'_api'
+       ,i_table_list     => v_table_list
+      );
+
+      for i in v_table_list.first..v_table_list.last
+      loop
+        lg('create API view for '||v_table_list(i));
+        generate_api_view(
+          i_app_gen_app_id => v_app_gen_app_id
+         ,i_table          => v_table_list(i)
+         ,i_package_name   => 'pck_f'||i_app_id||'_api'
+         ,o_view_name      => v_view_name
+        );
+
+        lg('create page for '||v_table_list(i));
+        create_report_with_form_pages(i_app_id, v_view_name, v_rep_page, v_form_page);
+        v_rep_page  := v_form_page + 1;
+        v_form_page := v_rep_page + 1;
+      end loop;
+    end if;
+    
+    lg('create_deployment');
+    create_deployment(
+      i_app_gen_app_id => v_app_gen_app_id
+     ,i_owner          => c_parsing_schema
+     ,i_pck_name       => substr(lower(replace(i_app_name, ' ', '_')), 1, 26)||'_api'
+     ,i_table_list     => v_table_list
+     ,i_workspace      => 'LOCAL'
+     ,i_app_id         => i_app_id
+    );
+  
+  exception
+    when others then
+      lge('create_app: '||sqlerrm||' '||sys.dbms_utility.format_error_backtrace);
+      if v_tables is not null then
+        drop_tables(v_tables);
+      end if;
+      raise_application_error(-20000, 'Error: '||sqlerrm||' '||sys.dbms_utility.format_error_backtrace);
+  end create_app;
+  
+  ------------------------------------------------------------------------------------------------------------------------------
+  -- Tables App Gen procedure
+  --
+  procedure create_app_from_tables(i_tables in varchar2, i_app_id in number, i_app_name in varchar2) is
+  begin
+    if i_tables is not null then
+      create_app(
+        i_sql            => null
+       ,i_app_id         => i_app_id
+       ,i_app_name       => i_app_name
+       ,i_parsing_schema => null
+       ,i_app_lang       => 'hr'
+       ,i_tables         => i_tables
+      );
+    else
+      raise_application_error(-20210, 'Please select some Tables first.');
+    end if;
+    
+  end create_app_from_tables;
+  
+  ------------------------------------------------------------------------------------------------------------------------------
+  -- JSON App Gen procedure
+  --
+  procedure create_app_json(i_json_definition in varchar2) is
+    v_sql varchar2(4000);
+    v_app_id number;
+    l_values apex_json.t_values;
+    v_last_table varchar2(50);
+    ex_definition exception;
+  begin
+    if i_json_definition is null then
+      raise ex_definition;
+    else
+      -- 1) Parse JSON, create DDL
+      for rec in (select lower(replace(jsn.tbllabel, ' ', '_')) tbllabel
+                       , lower(replace(jsn.columnname, ' ', '_')) columnname
+                       , jsn.columntype
+                       , jsn.nullable 
+                    from json_table(
+                      i_json_definition
+                    , '$.tables[*]'
+                    columns (tbllabel   varchar2(500) path '$.tableName',
+                             columnname varchar2(500) path '$.columns.columnName',
+                             columntype varchar2(500) path '$.columns.columnType',
+                             nullable   varchar2(500) path '$.columns.nullable',
+                             nested path '$.columns[*]' columns ( dummy VARCHAR2(500) PATH '$.columnName')
+                             )
+                        ) jsn)
+      loop
+        if v_last_table is null or v_last_table != rec.tbllabel then
+          v_sql := rtrim(v_sql, ', ' || chr(10));
+          v_sql := v_sql || ');' || chr(10) || 'CREATE TABLE '||rec.tbllabel||'('||chr(10);
+          v_sql := v_sql || rec.tbllabel ||'_auto_id NUMBER GENERATED BY DEFAULT ON NULL AS IDENTITY PRIMARY KEY,'||chr(10);
+        end if;
+        
+        v_sql := v_sql || rec.columnname || ' ' || rec.columntype || ' ' || rec.nullable || ', ' || chr(10);
+        
+        
+        v_last_table := rec.tbllabel;
+      end loop;
+      
+      v_sql := rtrim(v_sql, ', ' || chr(10));
+      v_sql := ltrim(v_sql, ';)');
+      v_sql := v_sql||');';
+      
+      select max(application_id) + 1
+        into v_app_id
+        from apex_applications
+       where application_id between 200 and 500;
+      
+      create_app(
+        i_sql            => v_sql
+       ,i_app_id         => v_app_id
+       ,i_app_name       => 'App Gen Application '||v_app_id
+       ,i_parsing_schema => NULL
+       ,i_app_lang       => 'hr'
+      );
+    end if;
+  exception
+    when ex_definition then
+      raise_application_error(-20200, 'Please create some Tables first.');
+    when others then
+      lge('create_app: '||sqlerrm||' '||sys.dbms_utility.format_error_backtrace);
+      raise_application_error(-20100, 'Error: '||sqlerrm||' '||sys.dbms_utility.format_error_backtrace);
+  end create_app_json;
 
 end pck_app_gen;
 /
