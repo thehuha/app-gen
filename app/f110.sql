@@ -27,7 +27,7 @@ prompt APPLICATION 110 - App Gen
 -- Application Export:
 --   Application:     110
 --   Name:            App Gen
---   Date and Time:   20:15 Monday April 8, 2019
+--   Date and Time:   15:29 Wednesday April 10, 2019
 --   Exported By:     DHUHA
 --   Flashback:       0
 --   Export Type:     Application Export
@@ -37,9 +37,10 @@ prompt APPLICATION 110 - App Gen
 
 -- Application Statistics:
 --   Pages:                      5
---     Items:                   10
+--     Items:                   11
+--     Computations:             1
 --     Processes:                8
---     Regions:                 10
+--     Regions:                 11
 --     Buttons:                  5
 --     Dynamic Actions:          8
 --   Shared Components:
@@ -114,7 +115,7 @@ wwv_flow_api.create_flow(
 ,p_substitution_string_01=>'APP_NAME'
 ,p_substitution_value_01=>'App Gen'
 ,p_last_updated_by=>'DHUHA'
-,p_last_upd_yyyymmddhh24miss=>'20190408200636'
+,p_last_upd_yyyymmddhh24miss=>'20190410135921'
 ,p_file_prefix => nvl(wwv_flow_application_install.get_static_app_file_prefix,'')
 ,p_files_version=>3
 ,p_ui_type_name => null
@@ -9678,7 +9679,7 @@ wwv_flow_api.create_page(
 ,p_autocomplete_on_off=>'OFF'
 ,p_page_template_options=>'#DEFAULT#'
 ,p_last_updated_by=>'DHUHA'
-,p_last_upd_yyyymmddhh24miss=>'20190408194406'
+,p_last_upd_yyyymmddhh24miss=>'20190410135921'
 );
 wwv_flow_api.create_page_plug(
  p_id=>wwv_flow_api.id(10742790898118554)
@@ -9883,6 +9884,17 @@ wwv_flow_api.create_page_item(
 ,p_attribute_02=>'N'
 ,p_attribute_04=>'TEXT'
 ,p_attribute_05=>'BOTH'
+);
+wwv_flow_api.create_page_computation(
+ p_id=>wwv_flow_api.id(9820824672291604)
+,p_computation_sequence=>10
+,p_computation_item=>'P1_APP_ID'
+,p_computation_point=>'AFTER_HEADER'
+,p_computation_type=>'QUERY'
+,p_computation=>wwv_flow_string.join(wwv_flow_t_varchar2(
+'SELECT NVL(MAX(application_id), 200) + 1',
+'  FROM apex_applications',
+' WHERE application_id > 200'))
 );
 wwv_flow_api.create_page_da_event(
  p_id=>wwv_flow_api.id(9107000892035362)
@@ -10309,6 +10321,7 @@ wwv_flow_api.create_page(
 ,p_user_interface_id=>wwv_flow_api.id(9064597129015403)
 ,p_name=>'App Gen for Dummies'
 ,p_step_title=>'App Gen for Dummies'
+,p_warn_on_unsaved_changes=>'N'
 ,p_step_sub_title=>'App Gen for Dummies'
 ,p_step_sub_title_type=>'TEXT_WITH_SUBSTITUTIONS'
 ,p_autocomplete_on_off=>'OFF'
@@ -10454,7 +10467,21 @@ wwv_flow_api.create_page(
 '   obj.married = false;',
 '   var jsonString= JSON.stringify(obj);'))
 ,p_last_updated_by=>'DHUHA'
-,p_last_upd_yyyymmddhh24miss=>'20190408195645'
+,p_last_upd_yyyymmddhh24miss=>'20190410135157'
+);
+wwv_flow_api.create_page_plug(
+ p_id=>wwv_flow_api.id(9820627593291602)
+,p_plug_name=>'New'
+,p_region_template_options=>'#DEFAULT#'
+,p_plug_template=>wwv_flow_api.id(8968851838015265)
+,p_plug_display_sequence=>20
+,p_include_in_reg_disp_sel_yn=>'Y'
+,p_plug_new_grid_row=>false
+,p_plug_new_grid_column=>false
+,p_plug_display_point=>'BODY'
+,p_plug_query_options=>'DERIVED_REPORT_COLUMNS'
+,p_attribute_01=>'N'
+,p_attribute_02=>'HTML'
 );
 wwv_flow_api.create_page_plug(
  p_id=>wwv_flow_api.id(12528651199977207)
@@ -10497,7 +10524,7 @@ wwv_flow_api.create_page_plug(
 ,p_region_name=>'rgnMyTables'
 ,p_region_template_options=>'#DEFAULT#:t-Region--scrollBody'
 ,p_plug_template=>wwv_flow_api.id(8990385591015282)
-,p_plug_display_sequence=>20
+,p_plug_display_sequence=>30
 ,p_include_in_reg_disp_sel_yn=>'Y'
 ,p_plug_new_grid_row=>false
 ,p_plug_new_grid_column=>false
@@ -10512,7 +10539,7 @@ wwv_flow_api.create_page_plug(
 ,p_region_name=>'rgnJSON'
 ,p_region_template_options=>'#DEFAULT#:is-collapsed:t-Region--scrollBody'
 ,p_plug_template=>wwv_flow_api.id(8979264422015275)
-,p_plug_display_sequence=>30
+,p_plug_display_sequence=>40
 ,p_include_in_reg_disp_sel_yn=>'Y'
 ,p_plug_display_point=>'BODY'
 ,p_plug_source=>'<pre id="json-display"></pre>'
@@ -10526,7 +10553,7 @@ wwv_flow_api.create_page_plug(
 ,p_region_name=>'rgnGenApps'
 ,p_region_template_options=>'#DEFAULT#'
 ,p_plug_template=>wwv_flow_api.id(8989287337015282)
-,p_plug_display_sequence=>40
+,p_plug_display_sequence=>50
 ,p_include_in_reg_disp_sel_yn=>'Y'
 ,p_plug_new_grid_row=>false
 ,p_plug_new_grid_column=>false
@@ -10723,10 +10750,25 @@ wwv_flow_api.create_page_button(
 wwv_flow_api.create_page_item(
  p_id=>wwv_flow_api.id(9131955126053385)
 ,p_name=>'P3_JSON_DEFINITION'
-,p_item_sequence=>20
+,p_item_sequence=>30
 ,p_item_plug_id=>wwv_flow_api.id(12528651199977207)
 ,p_display_as=>'NATIVE_HIDDEN'
 ,p_attribute_01=>'N'
+);
+wwv_flow_api.create_page_item(
+ p_id=>wwv_flow_api.id(9820500672291601)
+,p_name=>'P3_APP_NAME'
+,p_item_sequence=>10
+,p_item_plug_id=>wwv_flow_api.id(9820627593291602)
+,p_prompt=>'App Name'
+,p_display_as=>'NATIVE_TEXT_FIELD'
+,p_cSize=>30
+,p_field_template=>wwv_flow_api.id(9041813359015342)
+,p_item_template_options=>'#DEFAULT#'
+,p_attribute_01=>'N'
+,p_attribute_02=>'N'
+,p_attribute_04=>'TEXT'
+,p_attribute_05=>'BOTH'
 );
 wwv_flow_api.create_page_da_event(
  p_id=>wwv_flow_api.id(9137675923053459)
@@ -10834,7 +10876,8 @@ wwv_flow_api.create_page_da_action(
 'apex.server.process(',
 '    "GENERATE_APP",',
 '    {',
-'      x01: $v("P3_JSON_DEFINITION")  ',
+'      x01: $v("P3_JSON_DEFINITION"),  ',
+'      x02: $v("P3_APP_NAME")  ',
 '    },',
 '    {',
 '      success: function (pData) {',
@@ -10854,7 +10897,6 @@ wwv_flow_api.create_page_da_action(
 '    vPopup.remove();',
 '    $("#rgnGenApps").trigger("apexrefresh");',
 '});'))
-,p_stop_execution_on_error=>'Y'
 );
 wwv_flow_api.create_page_process(
  p_id=>wwv_flow_api.id(9137218342053456)
@@ -10863,7 +10905,7 @@ wwv_flow_api.create_page_process(
 ,p_process_type=>'NATIVE_PLSQL'
 ,p_process_name=>'GENERATE_APP'
 ,p_process_sql_clob=>wwv_flow_string.join(wwv_flow_t_varchar2(
-'pck_app_gen.create_app_json(apex_application.g_x01);',
+'pck_app_gen.create_app_json(apex_application.g_x01, apex_application.g_x02);',
 '',
 'htp.p(''#'');',
 '',

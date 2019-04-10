@@ -150,7 +150,29 @@ create or replace package body pck_apex_export as
     v_output_file   utl_file.file_type;
     v_file_name     varchar2(250);
     v_sgid          number;
-  BEGIN
+    --
+    function get_apex_release(i_app_id in number) return varchar2 is
+      v_ret varchar2(50);
+    begin
+      select version_no
+        into v_ret
+        from apex_release;
+        
+      return v_ret;
+    end get_apex_release;
+    --
+    function get_default_owner(i_app_id in number) return varchar2 is
+      v_ret varchar2(50);
+    begin
+      select max(owner)
+        into v_ret
+        from apex_applications
+       where application_id = i_app_id;
+        
+      return v_ret;
+    end get_default_owner;
+    --
+  begin
     v_sgid := apex_util.find_security_group_id(i_workspace);
     
     apex_util.set_security_group_id(v_sgid);
@@ -167,11 +189,11 @@ create or replace package body pck_apex_export as
         sys.htp.p('');
         sys.htp.p('begin');
         sys.htp.p('wwv_flow_api.import_begin (');
-        sys.htp.p(' p_version_yyyy_mm_dd=>''2016.08.24''');
-        sys.htp.p(',p_release=>''5.1.1.00.08''');
+        sys.htp.p(' p_version_yyyy_mm_dd=>'''||to_char(sysdate, 'yyyy.mm.dd')||'''');
+        sys.htp.p(',p_release=>'''||get_apex_release(i_app_id)||'''');
         sys.htp.p(',p_default_workspace_id=>'||v_sgid);
         sys.htp.p(',p_default_application_id=>'||i_app_id);
-        sys.htp.p(',p_default_owner=>''HROUG'');');
+        sys.htp.p(',p_default_owner=>'''||get_default_owner(i_app_id)||''');');
         sys.htp.p('');
         sys.htp.p('end;');
         sys.htp.p('/');

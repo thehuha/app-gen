@@ -142,7 +142,6 @@ create or replace package body pck_app_gen as
       v_sql := lower(replace(replace(v_arr(i), chr(10), ''), chr(13)));
       
       if length(v_sql) > 1 then
-        -- todo iskljuèiti za naredbe koje nisu create table
         v_tabs := v_tabs||':'||trim(REGEXP_SUBSTR (v_sql,
                         '\create table([^(]+)',
                         1,
@@ -720,7 +719,7 @@ create or replace package body pck_app_gen as
     execute immediate v_pck_clob;
     
     write_clob_to_file(
-      v_pck_clob
+      v_pck_clob||nl||'/'
     , v_file_name
     , 'APEX_EXPORT'
     );
@@ -748,7 +747,7 @@ create or replace package body pck_app_gen as
     execute immediate v_pck_clob;
 
     write_clob_to_file(
-      v_pck_clob
+      v_pck_clob||nl||'/'
     , v_file_name
     , 'APEX_EXPORT'
     );
@@ -851,7 +850,7 @@ create or replace package body pck_app_gen as
       '  else'||nl||
       '    raise_application_error(-20900, ''Unsupported operation in #TRIGGER_NAME#'');'||nl||
       '  end if;'||nl||
-      'end #TRIGGER_NAME#;'||nl||nl;
+      'end #TRIGGER_NAME#;'||nl;
     --
     v_trg_clob := v_trg_template;
     replace_tokens(v_trg_clob, '#VIEW_NAME#', v_view_name);
@@ -877,7 +876,7 @@ create or replace package body pck_app_gen as
      where app_gen_app_id = i_app_gen_app_id;
     
     write_clob_to_file(
-      v_vw_clob||v_trg_clob
+      v_vw_clob||v_trg_clob||'/'||nl
      ,v_view_name||'.vw'
      ,'APEX_EXPORT'
     );
@@ -1063,7 +1062,7 @@ create or replace package body pck_app_gen as
       'define schema_pwd = &3'|| nl ||
       nl ||
       'whenever sqlerror continue'|| nl ||
-      'spool deploy.log'|| nl ||
+      'spool _deploy.log'|| nl ||
       nl ||
       'prompt connecting as &schema_name ...'|| nl ||
       'set scan on'|| nl ||
@@ -1085,7 +1084,7 @@ create or replace package body pck_app_gen as
     
     write_clob_to_file(
       v_dep_sql
-     ,'deploy.sql'
+     ,'_deploy.sql'
      ,'APEX_EXPORT'
     );
     
@@ -1099,10 +1098,10 @@ create or replace package body pck_app_gen as
       '@SET /p SCHEMA="Enter Schema: "'|| nl ||
       '@SET /p PWD="Enter Password: "'|| nl ||
       nl ||  
-      'sqlplus /nolog @deploy.sql %DB% %SCHEMA% %PWD%'|| nl ||
+      'sqlplus /nolog @_deploy.sql %DB% %SCHEMA% %PWD%'|| nl ||
       nl ||
-      '@del /F deploy_%DB%.log'|| nl ||
-      '@ren deploy.log deploy_%DB%.log'|| nl ||
+      '@del /F _deploy_%DB%.log'|| nl ||
+      '@ren _deploy.log _deploy_%DB%.log'|| nl ||
       '@attrib +R deploy_%DB%.log'|| nl ||
       nl ||
       '@ENDLOCAL'|| nl ||
@@ -1110,7 +1109,7 @@ create or replace package body pck_app_gen as
     
     write_clob_to_file(
       v_dep_bat
-     ,'deploy.bat'
+     ,'_deploy.bat'
      ,'APEX_EXPORT'
     );
   end generate_deployment_scripts;
@@ -1128,7 +1127,7 @@ create or replace package body pck_app_gen as
     o_file_name := 'f'||v_app_id||'_objects_ddl.sql';
     
     write_clob_to_file(
-      v_user_ddl
+      replace(replace(replace(v_user_ddl, chr(10), ''), chr(13), ' '), ';', chr(13)||'/'||chr(13))
      ,o_file_name
      ,'APEX_EXPORT'
     );
@@ -1206,6 +1205,7 @@ create or replace package body pck_app_gen as
     v_app_gen_app_id number;
     l_theme          apex_180200.wwv_flow_create_app_v3.t_theme;
     v_view_name      varchar2(50);
+    v_workspace      varchar2(50) := 'DEMO1'; -- TODO
   begin
     -- 1) run DDL if needed
     -- 2) create PK triggers if needed
@@ -1331,7 +1331,7 @@ create or replace package body pck_app_gen as
      ,i_owner          => c_parsing_schema
      ,i_pck_name       => substr(lower(replace(i_app_name, ' ', '_')), 1, 26)||'_api'
      ,i_table_list     => v_table_list
-     ,i_workspace      => 'LOCAL'
+     ,i_workspace      => v_workspace
      ,i_app_id         => i_app_id
     );
   
@@ -1367,7 +1367,7 @@ create or replace package body pck_app_gen as
   ------------------------------------------------------------------------------------------------------------------------------
   -- JSON App Gen procedure
   --
-  procedure create_app_json(i_json_definition in varchar2) is
+  procedure create_app_json(i_json_definition in varchar2, i_app_name in varchar2) is
     v_sql varchar2(4000);
     v_app_id number;
     l_values apex_json.t_values;
@@ -1417,7 +1417,7 @@ create or replace package body pck_app_gen as
       create_app(
         i_sql            => v_sql
        ,i_app_id         => v_app_id
-       ,i_app_name       => 'App Gen Application '||v_app_id
+       ,i_app_name       => nvl(i_app_name, 'App Gen Application '||v_app_id)
        ,i_parsing_schema => NULL
        ,i_app_lang       => 'hr'
       );

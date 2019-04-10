@@ -25,7 +25,7 @@ create or replace package pck_app_gen authid current_user as
   ------------------------------------------------------------------------------------------------------------------------------
   -- JSON App Gen procedure
   --
-  procedure create_app_json(i_json_definition in varchar2);
+  procedure create_app_json(i_json_definition in varchar2, i_app_name in varchar2);
   
 end pck_app_gen;
 /
