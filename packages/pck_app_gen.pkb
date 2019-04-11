@@ -1329,7 +1329,7 @@ create or replace package body pck_app_gen as
     create_deployment(
       i_app_gen_app_id => v_app_gen_app_id
      ,i_owner          => c_parsing_schema
-     ,i_pck_name       => substr(lower(replace(i_app_name, ' ', '_')), 1, 26)||'_api'
+     ,i_pck_name       => 'pck_f'||i_app_id||'_api'
      ,i_table_list     => v_table_list
      ,i_workspace      => v_workspace
      ,i_app_id         => i_app_id

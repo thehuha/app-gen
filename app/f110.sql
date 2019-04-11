@@ -27,7 +27,7 @@ prompt APPLICATION 110 - App Gen
 -- Application Export:
 --   Application:     110
 --   Name:            App Gen
---   Date and Time:   15:29 Wednesday April 10, 2019
+--   Date and Time:   17:22 Thursday April 11, 2019
 --   Exported By:     DHUHA
 --   Flashback:       0
 --   Export Type:     Application Export
@@ -38,8 +38,8 @@ prompt APPLICATION 110 - App Gen
 -- Application Statistics:
 --   Pages:                      5
 --     Items:                   11
---     Computations:             1
---     Processes:                8
+--     Computations:             2
+--     Processes:                7
 --     Regions:                 11
 --     Buttons:                  5
 --     Dynamic Actions:          8
@@ -115,7 +115,7 @@ wwv_flow_api.create_flow(
 ,p_substitution_string_01=>'APP_NAME'
 ,p_substitution_value_01=>'App Gen'
 ,p_last_updated_by=>'DHUHA'
-,p_last_upd_yyyymmddhh24miss=>'20190410135921'
+,p_last_upd_yyyymmddhh24miss=>'20190410165757'
 ,p_file_prefix => nvl(wwv_flow_application_install.get_static_app_file_prefix,'')
 ,p_files_version=>3
 ,p_ui_type_name => null
@@ -10005,7 +10005,7 @@ wwv_flow_api.create_page(
 ,p_page_template_options=>'#DEFAULT#'
 ,p_page_is_public_y_n=>'Y'
 ,p_last_updated_by=>'DHUHA'
-,p_last_upd_yyyymmddhh24miss=>'20190408200636'
+,p_last_upd_yyyymmddhh24miss=>'20190410165757'
 );
 wwv_flow_api.create_page_plug(
  p_id=>wwv_flow_api.id(19898835514259022)
@@ -10213,6 +10213,17 @@ wwv_flow_api.create_page_item(
 ,p_attribute_04=>'TEXT'
 ,p_attribute_05=>'BOTH'
 );
+wwv_flow_api.create_page_computation(
+ p_id=>wwv_flow_api.id(11271366335427096)
+,p_computation_sequence=>20
+,p_computation_item=>'P2_APP_ID'
+,p_computation_point=>'AFTER_HEADER'
+,p_computation_type=>'QUERY'
+,p_computation=>wwv_flow_string.join(wwv_flow_t_varchar2(
+'SELECT NVL(MAX(application_id), 200) + 1',
+'  FROM apex_applications',
+' WHERE application_id > 200'))
+);
 wwv_flow_api.create_page_da_event(
  p_id=>wwv_flow_api.id(9162068292142839)
 ,p_name=>'APP_GEN - On Click - Generate'
@@ -10260,7 +10271,7 @@ wwv_flow_api.create_page_da_action(
 );
 wwv_flow_api.create_page_da_event(
  p_id=>wwv_flow_api.id(9162871646144185)
-,p_name=>'P1_APP_ID - On Key Release - Set App Name'
+,p_name=>'P2_APP_ID - On Key Release - Set App Name'
 ,p_event_sequence=>20
 ,p_triggering_element_type=>'ITEM'
 ,p_triggering_element=>'P2_APP_ID'
@@ -10281,16 +10292,6 @@ wwv_flow_api.create_page_da_action(
 ,p_attribute_09=>'N'
 ,p_stop_execution_on_error=>'Y'
 ,p_wait_for_result=>'Y'
-);
-wwv_flow_api.create_page_process(
- p_id=>wwv_flow_api.id(9124705551046037)
-,p_process_sequence=>10
-,p_process_point=>'BEFORE_HEADER'
-,p_process_type=>'NATIVE_PLSQL'
-,p_process_name=>'Get Username Cookie'
-,p_process_sql_clob=>wwv_flow_string.join(wwv_flow_t_varchar2(
-':P2_USERNAME := apex_authentication.get_login_username_cookie;',
-':P2_REMEMBER := case when :P2_USERNAME is not null then ''Y'' end;'))
 );
 wwv_flow_api.create_page_process(
  p_id=>wwv_flow_api.id(9163734698146239)
