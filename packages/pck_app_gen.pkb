@@ -137,6 +137,8 @@ create or replace package body pck_app_gen as
   begin
     v_arr := apex_util.string_to_table(i_sql, ';');
     
+    lg('v_arr.COUNT='||v_arr.count);
+    
     for i in 1..v_arr.count
     loop
       v_sql := lower(replace(replace(v_arr(i), chr(10), ''), chr(13)));
@@ -148,6 +150,7 @@ create or replace package body pck_app_gen as
                         1,
                         NULL,
                         1));
+        lg('execute immediate '||v_sql);                        
         execute immediate v_sql;
       end if;
     end loop;
@@ -1217,6 +1220,7 @@ create or replace package body pck_app_gen as
     if i_tables is not null then
       v_tables := i_tables;
     else
+      lg('run_sql: '||i_sql);
       run_sql(i_sql, v_tables);
     end if;
     lg('v_tables='||v_tables);
@@ -1230,6 +1234,9 @@ create or replace package body pck_app_gen as
     l_theme.theme_style := 'Vita'; --:P1_THEME_STYLE;
     
     lg('wwv_flow_create_app_v3.create_app');
+    lg('i_app_id='||i_app_id);
+    lg('i_app_name='||i_app_name);
+    lg('p_parsing_schema='||nvl(i_parsing_schema, c_parsing_schema));
     apex_180200.wwv_flow_create_app_v3.create_app (
         p_app_id                   => i_app_id,
         p_app_name                 => i_app_name,
@@ -1338,9 +1345,11 @@ create or replace package body pck_app_gen as
   exception
     when others then
       lge('create_app: '||sqlerrm||' '||sys.dbms_utility.format_error_backtrace);
+      
       if v_tables is not null then
         drop_tables(v_tables);
       end if;
+      
       raise_application_error(-20000, 'Error: '||sqlerrm||' '||sys.dbms_utility.format_error_backtrace);
   end create_app;
   
@@ -1409,7 +1418,7 @@ create or replace package body pck_app_gen as
       v_sql := ltrim(v_sql, ';)');
       v_sql := v_sql||');';
       
-      select max(application_id) + 1
+      select nvl(max(application_id), 200) + 1
         into v_app_id
         from apex_applications
        where application_id between 200 and 500;
