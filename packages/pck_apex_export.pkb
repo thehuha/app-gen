@@ -205,7 +205,7 @@ create or replace package body pck_apex_export as
         sys.htp.p('');
       end if;
       
-      apex_180200.wwv_flow_gen_api2.export(
+      apex_190100.wwv_flow_gen_api2.export(
         p_flow_id                   => i_app_id       -- in number
        ,p_page_id                   => null           -- in number   default null,
        ,p_format                    => 'DOS'          -- in varchar2 default 'UNIX',
@@ -224,7 +224,7 @@ create or replace package body pck_apex_export as
        ,p_component_id              => i_component_id -- in number   default null
       );
     
-      apex_180200.wwv_flow_gen_api2.file_close(p_commit => true, p_is_component_export => true);
+      apex_190100.wwv_flow_gen_api2.file_close(p_commit => true, p_is_component_export => true);
             
       -- Get Export into buffer
       owa.get_page(v_out_buf, v_out_row_count);

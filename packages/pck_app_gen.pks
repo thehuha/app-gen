@@ -27,5 +27,14 @@ create or replace package pck_app_gen authid current_user as
   --
   procedure create_app_json(i_json_definition in varchar2, i_app_name in varchar2);
   
+  ------------------------------------------------------------------------------------------------------------------------------
+  -- procedure writes input clob to directory
+  --
+  procedure write_clob_to_file(
+    i_clob      in clob
+  , i_file_name in varchar2
+  , i_ora_dir   in varchar2
+  );
+  
 end pck_app_gen;
 /

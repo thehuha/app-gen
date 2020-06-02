@@ -3,3 +3,4 @@ begin
   -- insert into event_log
   null;
 end l;  
+/
